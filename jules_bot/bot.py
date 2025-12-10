@@ -38,7 +38,7 @@ jules_client = JulesClient(api_key=JULES_TOKEN)
 # Global state for monitoring
 MONITORING_ACTIVE = False
 MONITORING_TASK_REF = None
-SESSION_STATES = {}  # Key: session_id, Value: number of activities or hash
+SESSION_STATES = {}  # Key: session_id, Value: state string
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -84,7 +84,7 @@ async def monitoring_loop():
     end_time = datetime.now() + timedelta(hours=1)
 
     while datetime.now() < end_time and MONITORING_ACTIVE:
-        logger.info("Checking sessions...")
+        logger.info("Starting monitoring cycle...")
         try:
             # 1. Fetch recent sessions (blocking)
             data = await asyncio.to_thread(jules_client.list_sessions, page_size=10)
@@ -95,41 +95,31 @@ async def monitoring_loop():
             for session in sessions:
                 s_id = session.get("id")
                 s_title = session.get("title", "No Title")
+                s_state = session.get("state", "UNKNOWN")
+
                 if not s_id:
                     continue
 
-                # 2. Fetch activities (blocking)
-                activities_data = await asyncio.to_thread(
-                    jules_client.list_activities,
-                    session_id=s_id
-                )
-                activities = activities_data.get("activities", [])
-
-                # 3. Compare state
-                current_activity_count = len(activities)
-                last_activity_id = activities[-1].get("id") if activities else None
+                # Log found session and its status to console
+                logger.info(f"Found session {s_id} ({s_title}) with status: {s_state}")
 
                 previous_state = SESSION_STATES.get(s_id)
+                should_notify = False
 
-                # Initialize state if new
+                # Condition 1: Critical status on first sight
                 if previous_state is None:
-                    SESSION_STATES[s_id] = {
-                        "count": current_activity_count,
-                        "last_id": last_activity_id
-                    }
-                    continue
+                    if s_state in ["AWAITING_PLAN_APPROVAL", "AWAITING_USER_FEEDBACK"]:
+                        should_notify = True
 
-                # Compare
-                if (current_activity_count != previous_state["count"]) or \
-                   (last_activity_id != previous_state["last_id"]):
+                # Condition 2: State change
+                elif s_state != previous_state:
+                    should_notify = True
 
-                    changes_detected.append(f"Session: {html.quote(s_title)} ({html.code(s_id)})\nNew activity detected!")
+                if should_notify:
+                    changes_detected.append(f"Session: {html.quote(s_title)} ({html.code(s_id)})\nStatus: {html.bold(s_state)}")
 
-                    # Update state
-                    SESSION_STATES[s_id] = {
-                        "count": current_activity_count,
-                        "last_id": last_activity_id
-                    }
+                # Update state
+                SESSION_STATES[s_id] = s_state
 
             # 4. Notify if changes
             if changes_detected:
