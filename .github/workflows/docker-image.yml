@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: montelibero/jules_telegram_bot
+  IMAGE_NAME: attid/jules_telegram_bot
 
 jobs:
   build-and-push:
