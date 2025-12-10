@@ -67,3 +67,28 @@ class JulesClient:
         except requests.exceptions.RequestException as e:
             logger.error("Error fetching activities for session %s: %s", clean_id, e)
             return {}
+
+    def create_session(self, repo_owner: str, repo_name: str, prompt: str, branch: str = "main") -> dict:
+        """Creates a new session."""
+        url = f"{self.BASE_URL}/sessions"
+        payload = {
+            "sourceContext": {
+                "source": f"sources/github/{repo_owner}/{repo_name}",
+                "githubRepoContext": {
+                    "startingBranch": branch
+                }
+            },
+            "prompt": prompt
+        }
+
+        try:
+            response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            self._log_response("create_session", data)
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error("Error creating session: %s", e)
+            if e.response is not None:
+                logger.error("API Response: %s", e.response.text)
+            return {}
