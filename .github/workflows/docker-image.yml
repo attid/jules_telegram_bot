@@ -29,6 +29,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker image
+        working-directory: ./jules_bot      
         run: |
           docker build -t $REGISTRY/$IMAGE_NAME:latest .
 
