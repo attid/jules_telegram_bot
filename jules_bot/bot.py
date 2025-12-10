@@ -47,8 +47,60 @@ async def cmd_start(message: Message):
         "Hello! I am the Jules Monitoring Bot.\n"
         "Commands:\n"
         "/list - List recent sessions\n"
-        "/monitor - Start monitoring sessions for 1 hour"
+        "/monitor - Start monitoring sessions for 1 hour\n"
+        "/create <owner/repo> <prompt> - Create a new session"
     )
+
+@dp.message(Command("create"))
+async def cmd_create(message: Message):
+    """Handle /create command."""
+    if str(message.chat.id) != str(ADMIN_CHAT_ID):
+        await message.answer("Unauthorized.")
+        return
+
+    # Parse arguments
+    # Message text format: /create owner/repo prompt...
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.answer("Usage: /create <owner/repo> <prompt>")
+        return
+
+    repo_arg = args[1]
+    prompt = args[2]
+
+    # Validate repo arg format
+    if "/" not in repo_arg:
+        await message.answer("Invalid repo format. Use owner/repo (e.g., Montelibero/docker-helper)")
+        return
+
+    owner, repo = repo_arg.split("/", 1)
+
+    await message.answer("Creating session...")
+
+    # Create session (blocking)
+    data = await asyncio.to_thread(
+        jules_client.create_session,
+        repo_owner=owner,
+        repo_name=repo,
+        prompt=prompt
+    )
+
+    if not data:
+        await message.answer("Failed to create session. Check logs.")
+        return
+
+    s_id = data.get("id", "Unknown ID")
+    s_url = data.get("url", f"https://jules.google.com/session/{s_id}")
+    s_state = data.get("state", "Unknown State")
+
+    response_msg = (
+        f"✅ Session Created!\n"
+        f"🆔 ID: {html.code(s_id)}\n"
+        f"🔗 URL: {html.quote(s_url)}\n"
+        f"📊 State: {html.quote(s_state)}"
+    )
+
+    await message.answer(response_msg, parse_mode="HTML")
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
