@@ -184,9 +184,13 @@ async def monitoring_loop():
         # Wait for 60 seconds
         await asyncio.sleep(60)
 
-    # Finished
-    MONITORING_ACTIVE = False
-    await bot.send_message(chat_id=ADMIN_CHAT_ID, text="Monitoring finished (1 hour completed).")
+    # Finished. If the loop exited because the time is up (and not because it
+    # was stopped manually), then MONITORING_ACTIVE will still be True.
+    if MONITORING_ACTIVE:
+        MONITORING_ACTIVE = False
+        await bot.send_message(
+            chat_id=ADMIN_CHAT_ID, text="Monitoring finished (1 hour completed)."
+        )
 
 @dp.message(Command("monitor"))
 async def cmd_monitor(message: Message):
@@ -198,16 +202,20 @@ async def cmd_monitor(message: Message):
         return
 
     if MONITORING_ACTIVE:
-        await message.answer("Monitoring is already active.")
-        return
-
-    MONITORING_ACTIVE = True
-    await message.answer(
-        "Monitoring started. I will check for changes every minute for the next hour."
-    )
-
-    # Create background task
-    MONITORING_TASK_REF = asyncio.create_task(monitoring_loop())
+        # Stop monitoring
+        MONITORING_ACTIVE = False
+        if MONITORING_TASK_REF:
+            MONITORING_TASK_REF.cancel()
+            MONITORING_TASK_REF = None
+        await message.answer("Monitoring stopped.")
+    else:
+        # Start monitoring
+        MONITORING_ACTIVE = True
+        await message.answer(
+            "Monitoring started. I will check for changes every minute for the next hour."
+        )
+        # Create background task
+        MONITORING_TASK_REF = asyncio.create_task(monitoring_loop())
 
 async def main():
     """Main entry point."""
