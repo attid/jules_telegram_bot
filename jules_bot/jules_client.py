@@ -48,6 +48,22 @@ class JulesClient:
             logger.error("Error fetching sessions: %s", e)
             return {}
 
+    def get_session(self, session_id: str) -> dict:
+        """Fetches details for a specific session."""
+        # Strip "sessions/" prefix if present
+        clean_id = session_id.replace("sessions/", "")
+
+        url = f"{self.BASE_URL}/sessions/{clean_id}"
+        try:
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            self._log_response(f"get_session/{clean_id}", data)
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error("Error fetching session %s: %s", clean_id, e)
+            return {}
+
     def list_activities(self, session_id: str, page_size: int = 30) -> dict:
         """
         Fetches activities for a specific session.

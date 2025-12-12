@@ -5,10 +5,11 @@ Telegram Bot for Jules API monitoring.
 import asyncio
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 
-from aiogram import Bot, Dispatcher, html
+from aiogram import Bot, Dispatcher, html, F
 from aiogram.filters import Command
 from aiogram.types import Message
 from dotenv import load_dotenv
@@ -127,6 +128,96 @@ async def cmd_list(message: Message):
         response_lines.append(f"🆔 {html.code(s_id)}\nTitle: {html.quote(s_title)}\n")
 
     await message.answer("\n".join(response_lines), parse_mode="HTML")
+
+async def _send_session_info(message: Message, session_id: str):
+    """Helper to fetch and send session info."""
+    await message.answer(f"Fetching info for session {session_id}...")
+
+    data = await asyncio.to_thread(jules_client.get_session, session_id=session_id)
+
+    if not data or "id" not in data:
+        await message.answer(f"❌ Session {session_id} not found or error occurred.")
+        return
+
+    s_id = data.get("id", "Unknown ID")
+    s_title = data.get("title", "No Title")
+    s_state = data.get("state", "Unknown State")
+    clean_id = s_id.replace("sessions/", "")
+    s_url = data.get("url", f"https://jules.google.com/session/{clean_id}")
+
+
+    response_msg = (
+        f"🆔 ID: {html.code(clean_id)}\n"
+        f"📌 Title: {html.quote(s_title)}\n"
+        f"📊 State: {html.quote(s_state)}\n"
+        f"🔗 URL: {html.quote(s_url)}\n\n"
+        f"Activities: /list_activities_{clean_id}"
+    )
+
+    await message.answer(response_msg, parse_mode="HTML")
+
+@dp.message(Command("info"))
+async def cmd_info(message: Message):
+    """Handle /info <id> command."""
+    if str(message.chat.id) != str(ADMIN_CHAT_ID):
+        await message.answer("Unauthorized.")
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Usage: /info <session_id>")
+        return
+
+    session_id = args[1].strip()
+    await _send_session_info(message, session_id)
+
+
+@dp.message(F.text.regexp(r"^/info_(\d+)$"))
+async def cmd_info_regex(message: Message):
+    """Handle /info_<id> command."""
+    if str(message.chat.id) != str(ADMIN_CHAT_ID):
+        await message.answer("Unauthorized.")
+        return
+
+    match = re.search(r"^/info_(\d+)$", message.text)
+    if not match:
+        return
+
+    session_id = match.group(1)
+    await _send_session_info(message, session_id)
+
+@dp.message(F.text.regexp(r"^/list_activities_(\d+)$"))
+async def cmd_activities_dynamic(message: Message):
+    """Handle /list_activities_<id> command."""
+    if str(message.chat.id) != str(ADMIN_CHAT_ID):
+        await message.answer("Unauthorized.")
+        return
+
+    match = re.search(r"^/list_activities_(\d+)$", message.text)
+    if not match:
+        return
+
+    session_id = match.group(1)
+    await message.answer(f"Fetching activities for session {session_id}...")
+
+    data = await asyncio.to_thread(jules_client.list_activities, session_id=session_id, page_size=10)
+    activities = data.get("activities", [])
+
+    if not activities:
+        await message.answer("No activities found.")
+        return
+
+    response_lines = [html.bold(f"Activities for {session_id}:")]
+    for activity in activities:
+        a_type = activity.get("type", "Unknown")
+        a_time = activity.get("createTime", "")
+        response_lines.append(f"• {html.code(a_type)} at {a_time}")
+
+    full_text = "\n".join(response_lines)
+    if len(full_text) > 4000:
+        full_text = full_text[:4000] + "..."
+
+    await message.answer(full_text, parse_mode="HTML")
 
 async def monitoring_loop():
     """Background task to monitor sessions for changes."""
